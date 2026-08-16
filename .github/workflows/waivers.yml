@@ -1,0 +1,34 @@
+name: Waiver pickups
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    # NOTE: adjust to when your league's waivers actually process (league
+    # settings -> "Waivers process"). This assumes the common default of
+    # Wednesday night/early Thursday ET.
+    - cron: "0 13 * * 3"   # ~8-9am ET Wednesday
+
+jobs:
+  run-waivers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Run waiver pickups
+        env:
+          ESPN_S2: ${{ secrets.ESPN_S2 }}
+          ESPN_SWID: ${{ secrets.ESPN_SWID }}
+          LEAGUE_ID: ${{ secrets.LEAGUE_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          SEASON_YEAR: ${{ secrets.SEASON_YEAR }}
+          SLACK_WEBHOOK_URL_WAIVERS: ${{ secrets.SLACK_WEBHOOK_URL_WAIVERS }}
+        run: python main.py waivers --apply

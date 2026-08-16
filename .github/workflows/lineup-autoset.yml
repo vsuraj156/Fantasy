@@ -1,0 +1,35 @@
+name: Lineup auto-set
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    # NOTE: times are UTC and approximate — adjust to your league's actual game
+    # lock times / your timezone. These aim for ~1-2h before Thursday Night
+    # Football and before the early Sunday slate.
+    - cron: "0 23 * * 4"   # ~6-7pm ET Thursday
+    - cron: "0 16 * * 0"   # ~11am-12pm ET Sunday
+
+jobs:
+  set-lineup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Run lineup auto-set
+        env:
+          ESPN_S2: ${{ secrets.ESPN_S2 }}
+          ESPN_SWID: ${{ secrets.ESPN_SWID }}
+          LEAGUE_ID: ${{ secrets.LEAGUE_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          SEASON_YEAR: ${{ secrets.SEASON_YEAR }}
+          SLACK_WEBHOOK_URL_LINEUP: ${{ secrets.SLACK_WEBHOOK_URL_LINEUP }}
+        run: python main.py lineup --apply

@@ -1,0 +1,29 @@
+name: Trade suggestions
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 14 * * 2"   # weekly digest, ~9-10am ET Tuesday
+
+jobs:
+  suggest-trades:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run trade suggestions
+        env:
+          ESPN_S2: ${{ secrets.ESPN_S2 }}
+          ESPN_SWID: ${{ secrets.ESPN_SWID }}
+          LEAGUE_ID: ${{ secrets.LEAGUE_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          SEASON_YEAR: ${{ secrets.SEASON_YEAR }}
+          SLACK_WEBHOOK_URL_TRADES: ${{ secrets.SLACK_WEBHOOK_URL_TRADES }}
+        run: python main.py trades
