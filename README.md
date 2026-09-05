@@ -1,9 +1,18 @@
 # ESPN Fantasy Football Automation
 
 Reads your league/roster via the unofficial [`espn-api`](https://github.com/cwendt94/espn-api)
-Python client, generates lineup/waiver/trade suggestions, and (for lineup + waivers) can
-apply them by driving an authenticated headless browser against fantasy.espn.com via
-Playwright. Sends a Slack notification either way.
+Python client, generates lineup/waiver/trade candidates from projection-based heuristics,
+then hands that shortlist to Claude (`reasoning.py`) for a second pass — it uses web search
+to check injury/inactive news, matchups, and usage trends before approving or rejecting
+each candidate. For lineup + waivers, approved moves can then be applied by driving an
+authenticated headless browser against fantasy.espn.com via Playwright. Sends a Slack
+notification either way.
+
+## 0. Anthropic API key
+
+The reasoning layer needs `ANTHROPIC_API_KEY` (an [Anthropic API](https://platform.claude.com)
+key) set in `.env` / repo secrets. If it's missing or the API call fails, the scripts fail
+open — they fall back to the unreviewed heuristic candidates rather than blocking.
 
 ## 1. Get your ESPN cookies
 

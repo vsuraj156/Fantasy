@@ -31,4 +31,5 @@ jobs:
           TEAM_ID: ${{ secrets.TEAM_ID }}
           SEASON_YEAR: ${{ secrets.SEASON_YEAR }}
           SLACK_WEBHOOK_URL_WAIVERS: ${{ secrets.SLACK_WEBHOOK_URL_WAIVERS }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python main.py waivers --apply

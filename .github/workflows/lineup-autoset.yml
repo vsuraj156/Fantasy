@@ -32,4 +32,5 @@ jobs:
           TEAM_ID: ${{ secrets.TEAM_ID }}
           SEASON_YEAR: ${{ secrets.SEASON_YEAR }}
           SLACK_WEBHOOK_URL_LINEUP: ${{ secrets.SLACK_WEBHOOK_URL_LINEUP }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python main.py lineup --apply
