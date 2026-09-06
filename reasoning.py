@@ -78,6 +78,7 @@ def review_candidates(
     count: int,
     describe: Callable[[int], str],
     guidance: str,
+    reason_hint: str = "one sentence",
 ) -> ReasonedPlan:
     """Ask Claude to approve/reject each of `count` pre-filtered candidates.
 
@@ -105,7 +106,7 @@ def review_candidates(
         f"Week {week} candidate {kind_description}:\n{candidates}\n\n"
         "Research each candidate as needed, then respond with ONLY a fenced "
         "```json code block containing an object of this exact shape:\n"
-        '{"decisions": [{"index": 0, "approve": true, "reason": "one sentence"}, '
+        '{"decisions": [{"index": 0, "approve": true, "reason": "' + reason_hint + '"}, '
         '...], "summary": "2-4 sentence overall summary suitable for a Slack '
         'message"}\n'
         "Include exactly one decision entry per candidate index listed above."

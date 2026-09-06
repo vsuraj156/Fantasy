@@ -74,22 +74,31 @@ building this). Before enabling `--apply` for real:
 
 In your repo: Settings -> Secrets and variables -> Actions -> New repository secret.
 Add: `ESPN_S2`, `ESPN_SWID`, `LEAGUE_ID`, `TEAM_ID`, `SEASON_YEAR`,
-`SLACK_WEBHOOK_URL_LINEUP`, `SLACK_WEBHOOK_URL_WAIVERS`, `SLACK_WEBHOOK_URL_TRADES`.
+`SLACK_WEBHOOK_URL_LINEUP`, `SLACK_WEBHOOK_URL_WAIVERS`, `SLACK_WEBHOOK_URL_TRADES`,
+`ANTHROPIC_API_KEY`.
 
-Three workflows in `.github/workflows/` run on a schedule (adjust the `cron` lines
+Four workflows in `.github/workflows/` run on a schedule (adjust the `cron` lines
 to your league's actual game/waiver times — see comments in each file):
 
 - `lineup-autoset.yml` — sets your lineup before Thursday/Sunday locks.
 - `waivers.yml` — submits suggested waiver claims after processing.
-- `trades.yml` — posts a weekly trade-target digest (suggestion only; ESPN trades
-  need the other manager's acceptance, so nothing is auto-proposed or auto-accepted).
+- `trades.yml` — posts a weekly trade-target digest with a proposed give/get
+  package and a ready-to-send pitch message per target (suggestion only; ESPN
+  trades need the other manager's acceptance, so nothing is auto-proposed or
+  auto-accepted — you copy the pitch and send it yourself).
+- `emergency-check.yml` — a second, later Sunday check for starters ruled OUT
+  with no healthy bench replacement (the main Sunday lineup run only looks at
+  your own bench). Falls back to the free-agent pool and posts an alert to
+  `#lineup` — **alert-only, never applies anything**, since it runs close to
+  kickoff with no time for review.
 
 You can also trigger any of them manually from the Actions tab (`workflow_dispatch`).
 
 ## CLI reference
 
 ```
-python main.py lineup  [--apply | --dry-run]   # default: --dry-run
-python main.py waivers [--apply | --dry-run]   # default: --dry-run
-python main.py trades                          # always suggestion-only
+python main.py lineup     [--apply | --dry-run]   # default: --dry-run
+python main.py waivers    [--apply | --dry-run]   # default: --dry-run
+python main.py trades                             # always suggestion-only
+python main.py emergency                          # always alert-only, never applies
 ```

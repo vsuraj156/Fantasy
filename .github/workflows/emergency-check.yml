@@ -1,0 +1,34 @@
+name: Sunday emergency lineup check
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    # NOTE: times are UTC and approximate — this aims to fire ~15-30 min
+    # before the early Sunday kickoff window (1pm ET), after the main
+    # lineup-autoset.yml run and after final inactives are typically out.
+    # Adjust to your league's actual game times.
+    - cron: "45 17 * * 0"   # ~12:45-1:45pm ET Sunday
+
+jobs:
+  check-emergency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run emergency lineup check
+        env:
+          ESPN_S2: ${{ secrets.ESPN_S2 }}
+          ESPN_SWID: ${{ secrets.ESPN_SWID }}
+          LEAGUE_ID: ${{ secrets.LEAGUE_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          SEASON_YEAR: ${{ secrets.SEASON_YEAR }}
+          SLACK_WEBHOOK_URL_LINEUP: ${{ secrets.SLACK_WEBHOOK_URL_LINEUP }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python main.py emergency

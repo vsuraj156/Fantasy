@@ -2,7 +2,12 @@ import argparse
 import sys
 
 from espn_client import get_league, get_my_team
-from lineup import format_swaps, suggest_lineup_swaps
+from lineup import (
+    find_emergency_replacements,
+    format_emergency,
+    format_swaps,
+    suggest_lineup_swaps,
+)
 from notify import notify
 from reasoning import approved_items, format_reasoned, review_candidates
 from trades import format_trade_targets, suggest_trade_targets
@@ -75,6 +80,48 @@ def run_lineup(apply: bool) -> None:
     )
 
 
+def run_emergency() -> None:
+    """Alert-only Sunday-morning safety net: catches starters ruled OUT with
+    no healthy bench replacement (the case suggest_lineup_swaps can't fix).
+    Never applies anything — posts a notification so you can act manually
+    before kickoff."""
+    league = get_league()
+    team = get_my_team(league)
+    week = league.current_week
+
+    pickups = find_emergency_replacements(league, team, week)
+    if not pickups:
+        summary = format_emergency(pickups, week)
+        print(summary)
+        notify("lineup", summary)
+        return
+
+    plan = review_candidates(
+        "emergency free-agent replacements",
+        week,
+        len(pickups),
+        lambda i: (
+            f"[{pickups[i].slot}] {pickups[i].starter_out.name} is "
+            f"{pickups[i].reason}, no healthy bench replacement available -> "
+            f"best free agent for the slot is {pickups[i].replacement.name} "
+            f"({pickups[i].replacement.position}, {pickups[i].replacement.proTeam})"
+        ),
+        "Confirm each starter is genuinely out/questionable and that the "
+        "suggested free agent is the best realistic replacement for this slot "
+        "right before kickoff. This is alert-only — no roster moves are "
+        "submitted automatically.",
+    )
+    summary = format_reasoned(
+        "emergency replacements",
+        week,
+        pickups,
+        plan,
+        lambda p: f"[{p.slot}] {p.starter_out.name} -> pick up {p.replacement.name} (FA)",
+    )
+    print(summary)
+    notify("lineup", "🚨 " + summary)
+
+
 def run_waivers(apply: bool) -> None:
     league = get_league()
     team = get_my_team(league)
@@ -130,6 +177,14 @@ def run_waivers(apply: bool) -> None:
     )
 
 
+def _roster_summary(team) -> str:
+    lines = []
+    for p in sorted(team.roster, key=lambda x: (x.position, -x.total_points)):
+        role = "bench" if p.lineupSlot in ("BE", "IR") else "starter"
+        lines.append(f"{p.name} ({p.position}, {role}, {p.total_points:.1f} pts)")
+    return "; ".join(lines)
+
+
 def run_trades() -> None:
     league = get_league()
     team = get_my_team(league)
@@ -142,6 +197,7 @@ def run_trades() -> None:
         notify("trades", summary)
         return
 
+    roster_summary = _roster_summary(team)
     plan = review_candidates(
         "trade targets",
         week,
@@ -152,8 +208,17 @@ def run_trades() -> None:
             f"{targets[i].player.total_points:.1f} pts this season)"
         ),
         "Decide whether each trade target is genuinely worth pursuing given "
-        "current injury status, role, and rest-of-season outlook — this is "
-        "suggestion-only, never auto-proposed to the other manager.",
+        "current injury status, role, and rest-of-season outlook. For each one "
+        "you approve, propose a specific, fair player to offer in return from "
+        "my roster (prefer a bench player; only offer a starter if the deal is "
+        "clearly worth it), and write a short, friendly pitch message I could "
+        f"send the other manager directly. My full roster: {roster_summary}. "
+        "This is suggestion-only — nothing is auto-proposed to the other "
+        "manager; I'll review and send the pitch myself.",
+        reason_hint=(
+            "2-4 sentences: state the specific player from my roster to offer "
+            "in return, then a short, friendly pitch message ready to send"
+        ),
     )
     summary = format_reasoned(
         "trade targets",
@@ -184,6 +249,14 @@ def main() -> None:
 
     subparsers.add_parser("trades", help="Suggest trade targets (suggestion only, never auto-applied)")
 
+    subparsers.add_parser(
+        "emergency",
+        help=(
+            "Alert-only Sunday-morning check for starters ruled OUT with no "
+            "healthy bench replacement (never applies anything)"
+        ),
+    )
+
     args = parser.parse_args()
 
     if args.command == "lineup":
@@ -192,6 +265,8 @@ def main() -> None:
         run_waivers(apply=args.apply)
     elif args.command == "trades":
         run_trades()
+    elif args.command == "emergency":
+        run_emergency()
 
 
 if __name__ == "__main__":
