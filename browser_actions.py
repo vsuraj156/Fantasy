@@ -1,17 +1,19 @@
 """
 Playwright automation for ESPN roster writes.
 
-IMPORTANT: ESPN's roster-edit page is a JS-driven, no-stable-DOM-contract UI, and
-these selectors were written from general knowledge of the page's structure, not
-verified against a live logged-in session (this environment has no ESPN account
-credentials to test with). Before relying on --apply for real:
+`set_lineup` is verified against a live authenticated session (2026-09-07).
+The roster page does NOT use a kebab "more options" menu — every player row
+(starter or bench) has a button labeled "Select {player name} to move".
+Clicking it arms that player; every row it's eligible to move into then shows
+a "HERE" button in the Action column in place of its own MOVE button — click
+it to complete the move. This works identically whether the target row is
+occupied (a swap: the two players trade slots) or empty. On success a green
+banner reading "Moves Saved - ..." appears at the bottom of the page.
 
-  1. Run `playwright codegen https://fantasy.espn.com/football/team?...` while
-     logged in, manually do one swap, and diff the generated selectors against
-     the SELECTORS map below.
-  2. Test once with HEADLESS=false (see debug() below) and watch it run.
-
-See README.md "Verification" section.
+`claim_waivers`'s selectors are NOT yet verified against a live session (the
+add/drop flow lives on a different page than the roster-move flow tested
+above) — verify those the same way before trusting `waivers --apply` for
+real. See README.md "Verify the browser-write path before trusting it".
 """
 
 import os
@@ -21,21 +23,9 @@ from typing import Iterable, Tuple
 from playwright.sync_api import sync_playwright
 
 SELECTORS = {
-    "player_row": 'tr[class*="Table__TR"]:has-text("{player_name}")',
-    "kebab_menu": 'button[aria-label="More options icon"]',
-    "move_to_slot": 'li:has-text("{slot_label}")',
-    "confirm_lineup_saved": 'text=Lineup Saved',
-}
-
-SLOT_LABEL_MAP = {
-    "QB": "Move to QB",
-    "RB": "Move to RB",
-    "WR": "Move to WR",
-    "TE": "Move to TE",
-    "FLEX": "Move to FLEX",
-    "D/ST": "Move to D/ST",
-    "K": "Move to K",
-    "BE": "Move to Bench",
+    "move_button": 'button[aria-label="Select {player_name} to move"]',
+    "here_button_in_row": 'tr:has-text("{player_name}") button:has-text("HERE")',
+    "confirm_moves_saved": "text=Moves Saved",
 }
 
 
@@ -85,12 +75,21 @@ def _espn_page():
             browser.close()
 
 
+def _swap_players(page, from_player: str, to_player: str) -> None:
+    """Arm `from_player`'s MOVE button, then click the HERE button that
+    appears in `to_player`'s row to complete the swap between them."""
+    page.click(SELECTORS["move_button"].format(player_name=from_player))
+    page.click(SELECTORS["here_button_in_row"].format(player_name=to_player))
+    page.wait_for_selector(SELECTORS["confirm_moves_saved"], timeout=10000)
+
+
 def set_lineup(week: int, swaps) -> None:
     with _espn_page() as page:
         for swap in swaps:
-            _move_player(page, swap.starter_out.name, "Move to Bench")
-            slot_label = SLOT_LABEL_MAP.get(swap.slot, f"Move to {swap.slot}")
-            _move_player(page, swap.bench_in.name, slot_label)
+            # Arming the starter and targeting the bench player swaps them
+            # directly — the bench player takes the starter's slot and the
+            # starter drops to bench, in one step.
+            _swap_players(page, swap.starter_out.name, swap.bench_in.name)
 
 
 def claim_waivers(claims: Iterable[Tuple[str, str]]) -> None:
@@ -102,9 +101,3 @@ def claim_waivers(claims: Iterable[Tuple[str, str]]) -> None:
             page.click(f'li:has-text("{drop_name}")')
             page.click('button:has-text("Continue")')
             page.click('button:has-text("Submit")')
-
-
-def _move_player(page, player_name: str, slot_label: str) -> None:
-    row = SELECTORS["player_row"].format(player_name=player_name)
-    page.click(f'{row} >> {SELECTORS["kebab_menu"]}')
-    page.click(SELECTORS["move_to_slot"].format(slot_label=slot_label))
