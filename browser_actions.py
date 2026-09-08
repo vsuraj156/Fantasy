@@ -10,10 +10,18 @@ it to complete the move. This works identically whether the target row is
 occupied (a swap: the two players trade slots) or empty. On success a green
 banner reading "Moves Saved - ..." appears at the bottom of the page.
 
-`claim_waivers`'s selectors are NOT yet verified against a live session (the
-add/drop flow lives on a different page than the roster-move flow tested
-above) — verify those the same way before trusting `waivers --apply` for
-real. See README.md "Verify the browser-write path before trusting it".
+`claim_waivers` is partially verified (2026-09-07) against a live session: the
+entry point is a full page at /football/players/add (not a modal, and not the
+"Add Player" text button the old selectors assumed), where each free agent row
+has a button labeled "Claim {player} {position} for {team}". Clicking it opens
+a full-page claim form at /football/rosterfix, where each of your own players
+has a button labeled "Drop Player {name}" (or "Can't drop {name}" if locked);
+selecting one enables a "Continue" button. The "Continue" -> submit step past
+that point was NOT exercised live (submitting a real claim isn't trivially
+reversible the way a lineup swap is — it sits pending until your league's
+waiver day) — do one supervised `HEADLESS=false python main.py waivers --apply`
+run before trusting this on a schedule, per README.md "Verify the browser-write
+path before trusting it".
 """
 
 import os
@@ -26,6 +34,10 @@ SELECTORS = {
     "move_button": 'button[aria-label="Select {player_name} to move"]',
     "here_button_in_row": 'tr:has-text("{player_name}") button:has-text("HERE")',
     "confirm_moves_saved": "text=Moves Saved",
+    "claim_button": 'button[aria-label^="Claim {player_name} "]',
+    "drop_button": 'button[aria-label="Drop Player {player_name}"]',
+    "continue_button": 'button:has-text("Continue")',
+    "submit_button": 'button:has-text("Submit")',
 }
 
 
@@ -37,6 +49,12 @@ def _team_url() -> str:
         f"https://fantasy.espn.com/football/team"
         f"?leagueId={league_id}&teamId={team_id}&seasonId={year}"
     )
+
+
+def _add_player_url() -> str:
+    league_id = os.environ["LEAGUE_ID"]
+    year = os.environ.get("SEASON_YEAR", "2026")
+    return f"https://fantasy.espn.com/football/players/add?leagueId={league_id}&seasonId={year}"
 
 
 def _authenticated_context(browser):
@@ -61,14 +79,14 @@ def _authenticated_context(browser):
 
 
 @contextmanager
-def _espn_page():
+def _espn_page(start_url: str = None):
     headless = os.environ.get("HEADLESS", "true").lower() != "false"
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
         context = _authenticated_context(browser)
         page = context.new_page()
-        page.goto(_team_url(), wait_until="networkidle")
+        page.goto(start_url or _team_url(), wait_until="networkidle")
         try:
             yield page
         finally:
@@ -93,11 +111,12 @@ def set_lineup(week: int, swaps) -> None:
 
 
 def claim_waivers(claims: Iterable[Tuple[str, str]]) -> None:
-    with _espn_page() as page:
+    with _espn_page(start_url=_add_player_url()) as page:
         for add_name, drop_name in claims:
-            page.click('text="Add Player"')
-            page.fill('input[placeholder="Search Players"]', add_name)
-            page.click(f'tr:has-text("{add_name}") >> text="Add"')
-            page.click(f'li:has-text("{drop_name}")')
-            page.click('button:has-text("Continue")')
-            page.click('button:has-text("Submit")')
+            page.click(SELECTORS["claim_button"].format(player_name=add_name))
+            page.click(SELECTORS["drop_button"].format(player_name=drop_name))
+            page.click(SELECTORS["continue_button"])
+            # Not exercised live — verify this final submit step with one
+            # supervised HEADLESS=false run before trusting it unattended.
+            page.click(SELECTORS["submit_button"])
+            page.goto(_add_player_url(), wait_until="networkidle")

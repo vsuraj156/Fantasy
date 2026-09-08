@@ -62,16 +62,16 @@ the channel). Put each resulting URL in `.env` as `SLACK_WEBHOOK_URL_LINEUP`,
 **`set_lineup`'s selectors are verified** (2026-09-07, against a live authenticated
 session) — the roster page uses a "select player to move, then click HERE on the
 target row" flow, not a kebab menu, and a swap completes in one step (see the
-docstring in `browser_actions.py`). **`claim_waivers`'s selectors are still
-unverified** — the add/drop flow lives on a different page and hasn't been tested
-live yet. Before enabling `waivers --apply` for real:
+docstring in `browser_actions.py`). **`claim_waivers`'s selectors are partially
+verified** (2026-09-07) — the real "Claim {player}" and "Drop Player {name}"
+buttons are confirmed, but the final Continue -> Submit step wasn't exercised
+live (a submitted waiver claim isn't instantly reversible the way a lineup swap
+is). Before enabling `waivers --apply` unattended:
 
-1. Log in locally, run `playwright codegen "https://fantasy.espn.com/football/team?leagueId=<id>&teamId=<id>&seasonId=<year>"`,
-   manually perform one waiver add/drop, and compare the generated selectors to
-   `claim_waivers` in `browser_actions.py`. Fix any mismatches.
-2. Run once with `HEADLESS=false python main.py waivers --apply` during a low-stakes
-   week and watch it actually execute in the visible browser window.
-3. Only then turn on the scheduled GitHub Actions workflow.
+1. Run once with `HEADLESS=false python main.py waivers --apply` during a low-stakes
+   week and watch it actually execute in the visible browser window, paying
+   particular attention to the final Continue/Submit step.
+2. Only then turn on the scheduled GitHub Actions workflow.
 
 (`lineup --apply` doesn't need this — its selectors are already verified — but a
 supervised `HEADLESS=false` run before your first unattended `--apply` week is
