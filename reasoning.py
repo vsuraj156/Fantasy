@@ -9,9 +9,14 @@ heuristics can't see — current injury reports, beat-writer news, opponent
 matchup strength, recent usage trends — and decides which candidates to keep,
 with a one-sentence rationale each plus an overall summary for Slack.
 
-If the model call fails or its output can't be parsed, we fail open: keep
-every heuristic candidate as-is and surface the raw model text (if any) as
-the summary, so a bad API day never blocks lineup/waiver actions outright.
+If the model call fails or its output can't be parsed, we fail CLOSED: no
+candidate is treated as approved, so a bad API day (or a model response that
+fails structured-output parsing) never results in an unreviewed heuristic
+move going out via --apply. The raw model text, if any, is surfaced as the
+summary so a human can still see what happened and act manually. This is a
+deliberate asymmetry with "fail open" — the point of this layer is to gate
+risky automated actions, so an inconclusive review must default to "don't
+act," not "trust the heuristic anyway."
 """
 
 import json
@@ -89,7 +94,7 @@ def review_candidates(
         return ReasonedPlan(decisions=[], summary="")
 
     fallback = ReasonedPlan(
-        decisions=[Decision(index=i, approve=True, reason="") for i in range(count)],
+        decisions=[Decision(index=i, approve=False, reason="") for i in range(count)],
         summary="",
     )
 
@@ -109,15 +114,18 @@ def review_candidates(
         '{"decisions": [{"index": 0, "approve": true, "reason": "' + reason_hint + '"}, '
         '...], "summary": "2-4 sentence overall summary suitable for a Slack '
         'message"}\n'
-        "Include exactly one decision entry per candidate index listed above."
+        "Include exactly one decision entry per candidate index listed above. "
+        "The JSON must be strictly valid: escape every double quote inside a "
+        "string with a backslash, or better, avoid embedding literal quote "
+        "marks in reason/summary text entirely (paraphrase instead of quoting)."
     )
 
     try:
         text = _run(system, user)
     except anthropic.APIError as exc:
         fallback.summary = (
-            f"AI review step failed ({exc}); falling back to the unreviewed "
-            "heuristic candidates."
+            f"AI review step failed ({exc}) — nothing was auto-approved. "
+            "Review the heuristic candidates manually."
         )
         return fallback
 
@@ -134,9 +142,10 @@ def review_candidates(
         summary = str(data.get("summary", ""))
     except (ValueError, KeyError, TypeError, json.JSONDecodeError):
         decisions = fallback.decisions
-        summary = text.strip() or (
-            "AI review step failed to parse a response; falling back to the "
-            "unreviewed heuristic candidates."
+        summary = (
+            "AI review step failed to parse a valid response — nothing was "
+            "auto-approved. Raw model output for manual review:\n\n"
+            + text.strip()
         )
 
     return ReasonedPlan(decisions=decisions, summary=summary)
