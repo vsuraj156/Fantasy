@@ -94,8 +94,8 @@ still a reasonable sanity check.)
 In your repo: Settings -> Secrets and variables -> Actions -> New repository secret.
 Add: `ESPN_S2`, `ESPN_SWID`, `LEAGUE_ID`, `TEAM_ID`, `SEASON_YEAR`,
 `SLACK_WEBHOOK_URL_LINEUP`, `SLACK_WEBHOOK_URL_WAIVERS`, `SLACK_WEBHOOK_URL_TRADES`,
-`ANTHROPIC_API_KEY`, and (optional) `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`
-for cross-week memory.
+`ANTHROPIC_API_KEY`; optionally `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`
+for cross-week memory, and `SLACK_BOT_TOKEN` for conversational Q&A (section 7).
 
 Four workflows in `.github/workflows/` run on a schedule (adjust the `cron` lines
 to your league's actual game/waiver times — see comments in each file):
@@ -111,8 +111,60 @@ to your league's actual game/waiver times — see comments in each file):
   your own bench). Falls back to the free-agent pool and posts an alert to
   `#lineup` — **alert-only, never applies anything**, since it runs close to
   kickoff with no time for review.
+- `slack-question.yml` — answers a question asked by @-mentioning the Slack
+  bot (see section 7 below). Not on a schedule — triggered by a
+  `repository_dispatch` from the Vercel relay function.
 
 You can also trigger any of them manually from the Actions tab (`workflow_dispatch`).
+
+## 7. Conversational Slack Q&A (optional)
+
+@-mention the bot in Slack (e.g. "@FantasyBot why did you bench Isaiah Likely") and
+get a reply in-thread, using the same reasoning/memory context as everything else.
+This needs one extra piece the other flows don't: something to receive Slack's
+incoming events. Slack requires an ack within 3 seconds, but a Claude+web-search
+answer can take well over a minute, so the flow is split in two:
+
+```
+Slack @-mention -> Vercel function (verifies + acks instantly)
+                 -> repository_dispatch -> GitHub Actions (does the actual work)
+                 -> posts the answer back to Slack
+```
+
+**7a. Create the Slack app**
+
+1. Go to [api.slack.com/apps](https://api.slack.com/apps) -> Create New App -> From scratch.
+2. **OAuth & Permissions** -> Bot Token Scopes: add `app_mentions:read` and `chat:write`.
+3. **Install App** to your workspace -> copy the **Bot User OAuth Token** (`xoxb-...`).
+   This is `SLACK_BOT_TOKEN`.
+4. **Basic Information** -> copy the **Signing Secret**. This is `SLACK_SIGNING_SECRET`.
+5. Invite the bot to your channel (`/invite @YourBotName`).
+6. Don't set up Event Subscriptions yet — that needs the Vercel URL from step 7c.
+
+**7b. Create a GitHub token for the relay**
+
+A classic personal access token with the `repo` scope (Settings -> Developer settings ->
+Personal access tokens), used only to trigger `repository_dispatch` on this repo. This is
+`GITHUB_DISPATCH_TOKEN`.
+
+**7c. Deploy the Vercel relay function**
+
+See `vercel-slack-relay/` in this repo. Full instructions for creating the Vercel project
+are below.
+
+**7d. Finish Slack Event Subscriptions**
+
+Back in your Slack app -> **Event Subscriptions** -> enable -> set the Request URL to
+`https://<your-vercel-project>.vercel.app/api/slack-events` (Slack will verify it live,
+which the function handles). Under "Subscribe to bot events", add `app_mention`. Save,
+and reinstall the app if prompted.
+
+**7e. Add secrets**
+
+- Repo secrets (GitHub): add `SLACK_BOT_TOKEN`.
+- `.env` (only needed if you want to test `python main.py answer` locally): same var.
+- Vercel project env vars: `SLACK_SIGNING_SECRET`, `GITHUB_REPO`, `GITHUB_DISPATCH_TOKEN`
+  (see `vercel-slack-relay/README.md`).
 
 ## CLI reference
 
@@ -121,4 +173,5 @@ python main.py lineup     [--apply | --dry-run]   # default: --dry-run
 python main.py waivers    [--apply | --dry-run]   # default: --dry-run
 python main.py trades                             # always suggestion-only
 python main.py emergency                          # always alert-only, never applies
+python main.py answer                             # answers a Slack question (env-driven; not for direct use)
 ```

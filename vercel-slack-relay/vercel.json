@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/slack-events.py": {
+      "maxDuration": 10
+    }
+  }
+}

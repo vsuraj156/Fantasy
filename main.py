@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 
 import memory
@@ -9,8 +10,8 @@ from lineup import (
     format_swaps,
     suggest_lineup_swaps,
 )
-from notify import notify
-from reasoning import approved_items, format_reasoned, review_candidates
+from notify import notify, reply_in_thread
+from reasoning import answer_question, approved_items, format_reasoned, review_candidates
 from trades import format_trade_targets, suggest_trade_targets
 from waivers import format_waivers, suggest_waivers
 
@@ -219,6 +220,34 @@ def _roster_summary(team) -> str:
     return "; ".join(lines)
 
 
+def run_answer() -> None:
+    """Answers a question asked by @-mentioning the Slack bot. Triggered via
+    a GitHub Actions repository_dispatch from the Vercel Slack-events relay
+    (see vercel-slack-relay/api/slack-events.py) — reads the question and
+    where to reply from env vars set from that event's client_payload, so no
+    untrusted Slack content ever gets shell-interpolated into this command."""
+    text = os.environ.get("SLACK_QUESTION_TEXT", "").strip()
+    channel = os.environ.get("SLACK_QUESTION_CHANNEL", "")
+    thread_ts = os.environ.get("SLACK_QUESTION_THREAD_TS") or None
+
+    if not text or not channel:
+        print("No question text/channel provided, nothing to answer.")
+        return
+
+    league = get_league()
+    team = get_my_team(league)
+    week = league.current_week
+
+    context = f"Current roster (week {week}): {_roster_summary(team)}"
+    history = memory.history_for([p.name for p in team.roster])
+    if history:
+        context += f"\n\n{history}"
+
+    answer = answer_question(text, context)
+    print(answer)
+    reply_in_thread(channel, thread_ts, answer)
+
+
 def run_trades() -> None:
     league = get_league()
     team = get_my_team(league)
@@ -292,6 +321,14 @@ def main() -> None:
         ),
     )
 
+    subparsers.add_parser(
+        "answer",
+        help=(
+            "Answer a Slack question (reads SLACK_QUESTION_TEXT/_CHANNEL/"
+            "_THREAD_TS from the environment; triggered via repository_dispatch)"
+        ),
+    )
+
     args = parser.parse_args()
 
     if args.command == "lineup":
@@ -302,6 +339,8 @@ def main() -> None:
         run_trades()
     elif args.command == "emergency":
         run_emergency()
+    elif args.command == "answer":
+        run_answer()
 
 
 if __name__ == "__main__":

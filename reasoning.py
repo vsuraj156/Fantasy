@@ -151,6 +151,29 @@ def review_candidates(
     return ReasonedPlan(decisions=decisions, summary=summary)
 
 
+def answer_question(question: str, context: str) -> str:
+    """Conversational Q&A, used by the Slack app-mention flow (main.py's
+    `answer` command). Reuses the same _run() tool-runner call as
+    review_candidates, but returns plain text instead of parsed JSON — this
+    is a chat reply, not a gated decision."""
+    system = (
+        "You are a fantasy football assistant answering a manager's question "
+        "about their own team, in a Slack channel. Use the provided roster and "
+        "decision-history context, plus web search for anything time-sensitive "
+        "(injury news, matchups, recent performance, box scores). Answer "
+        "directly and conversationally in 2-5 sentences — this is a chat "
+        "reply, not a written report."
+    )
+    user = f"Team context:\n{context}\n\nQuestion: {question}"
+
+    try:
+        text = _run(system, user)
+    except anthropic.APIError as exc:
+        return f"Sorry, I couldn't look into that right now ({exc})."
+
+    return text.strip() or "I looked into it but didn't come up with a clear answer — try rephrasing?"
+
+
 def approved_items(items: list, plan: ReasonedPlan) -> list:
     approved_idx = {d.index for d in plan.decisions if d.approve}
     return [item for i, item in enumerate(items) if i in approved_idx]

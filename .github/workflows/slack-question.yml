@@ -1,0 +1,39 @@
+name: Answer Slack question
+
+on:
+  repository_dispatch:
+    types: [slack_question]
+
+jobs:
+  answer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Answer the question
+        env:
+          ESPN_S2: ${{ secrets.ESPN_S2 }}
+          ESPN_SWID: ${{ secrets.ESPN_SWID }}
+          LEAGUE_ID: ${{ secrets.LEAGUE_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          SEASON_YEAR: ${{ secrets.SEASON_YEAR }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          # These three come from the Slack event, relayed via the Vercel
+          # function's repository_dispatch call. Passing them as env vars
+          # (rather than interpolating into the run: script) means this
+          # untrusted, externally-supplied text is never shell-interpolated —
+          # main.py reads it from os.environ instead.
+          SLACK_QUESTION_TEXT: ${{ github.event.client_payload.text }}
+          SLACK_QUESTION_CHANNEL: ${{ github.event.client_payload.channel }}
+          SLACK_QUESTION_THREAD_TS: ${{ github.event.client_payload.thread_ts }}
+        run: python main.py answer
