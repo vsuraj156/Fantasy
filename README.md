@@ -11,8 +11,20 @@ notification either way.
 ## 0. Anthropic API key
 
 The reasoning layer needs `ANTHROPIC_API_KEY` (an [Anthropic API](https://platform.claude.com)
-key) set in `.env` / repo secrets. If it's missing or the API call fails, the scripts fail
-open — they fall back to the unreviewed heuristic candidates rather than blocking.
+key) set in `.env` / repo secrets. If the model call fails or its response can't be parsed,
+the scripts fail *closed* — nothing gets auto-approved, so a bad API day never results in
+an unreviewed heuristic move going out via `--apply`; you'll just see it flagged for manual
+review instead.
+
+## 0.5. Cross-week memory (optional)
+
+`memory.py` remembers what the reasoning layer decided about specific players across past
+weeks (e.g. "held this injured player on waivers 3 weeks running") so future reviews aren't
+starting cold every run. Since GitHub Actions runners are stateless, this needs external
+storage — backed by [Upstash Redis](https://upstash.com) (free tier): create a database in
+the Upstash console, copy its REST URL and token into `.env` as `UPSTASH_REDIS_REST_URL` and
+`UPSTASH_REDIS_REST_TOKEN`. This is entirely optional — if unset, or a request fails, memory
+is silently skipped (no history in, nothing recorded) rather than breaking anything.
 
 ## 1. Get your ESPN cookies
 
@@ -82,7 +94,8 @@ still a reasonable sanity check.)
 In your repo: Settings -> Secrets and variables -> Actions -> New repository secret.
 Add: `ESPN_S2`, `ESPN_SWID`, `LEAGUE_ID`, `TEAM_ID`, `SEASON_YEAR`,
 `SLACK_WEBHOOK_URL_LINEUP`, `SLACK_WEBHOOK_URL_WAIVERS`, `SLACK_WEBHOOK_URL_TRADES`,
-`ANTHROPIC_API_KEY`.
+`ANTHROPIC_API_KEY`, and (optional) `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`
+for cross-week memory.
 
 Four workflows in `.github/workflows/` run on a schedule (adjust the `cron` lines
 to your league's actual game/waiver times — see comments in each file):

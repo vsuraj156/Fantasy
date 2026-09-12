@@ -1,6 +1,7 @@
 import argparse
 import sys
 
+import memory
 from espn_client import get_league, get_my_team
 from lineup import (
     find_emergency_replacements,
@@ -12,6 +13,36 @@ from notify import notify
 from reasoning import approved_items, format_reasoned, review_candidates
 from trades import format_trade_targets, suggest_trade_targets
 from waivers import format_waivers, suggest_waivers
+
+
+def _review_with_memory(
+    kind, week, items, describe, involved_of, guidance, reason_hint="one sentence"
+):
+    """review_candidates, but injects past-weeks history for the players
+    involved into the guidance, and records this run's decisions back to
+    memory afterward so future weeks see it."""
+    all_names = [name for item in items for name in involved_of(item)]
+    history = memory.history_for(all_names)
+    full_guidance = guidance + (f"\n\n{history}" if history else "")
+
+    plan = review_candidates(
+        kind,
+        week,
+        len(items),
+        lambda i: describe(items[i]),
+        full_guidance,
+        reason_hint=reason_hint,
+    )
+    memory.record_decisions(
+        kind,
+        week,
+        [
+            {"player": name, "approve": d.approve, "reason": d.reason}
+            for d in plan.decisions
+            for name in involved_of(items[d.index])
+        ],
+    )
+    return plan
 
 
 def _finish(
@@ -36,18 +67,19 @@ def run_lineup(apply: bool) -> None:
         notify("lineup", summary)
         return
 
-    plan = review_candidates(
+    plan = _review_with_memory(
         "lineup swaps",
         week,
-        len(swaps),
-        lambda i: (
-            f"[{swaps[i].slot}] bench {swaps[i].starter_out.name} "
-            f"({swaps[i].starter_out.position}, {swaps[i].starter_out.proTeam}, "
-            f"injury={swaps[i].starter_out.injuryStatus}) -> start "
-            f"{swaps[i].bench_in.name} ({swaps[i].bench_in.position}, "
-            f"{swaps[i].bench_in.proTeam}, injury={swaps[i].bench_in.injuryStatus}) "
-            f"— heuristic reason: {swaps[i].reason}"
+        swaps,
+        lambda s: (
+            f"[{s.slot}] bench {s.starter_out.name} "
+            f"({s.starter_out.position}, {s.starter_out.proTeam}, "
+            f"injury={s.starter_out.injuryStatus}) -> start "
+            f"{s.bench_in.name} ({s.bench_in.position}, "
+            f"{s.bench_in.proTeam}, injury={s.bench_in.injuryStatus}) "
+            f"— heuristic reason: {s.reason}"
         ),
+        lambda s: [s.starter_out.name, s.bench_in.name],
         "Decide whether each proposed start/bench swap is still correct given "
         "the latest injury/inactive news and this week's matchups.",
     )
@@ -96,16 +128,17 @@ def run_emergency() -> None:
         notify("lineup", summary)
         return
 
-    plan = review_candidates(
+    plan = _review_with_memory(
         "emergency free-agent replacements",
         week,
-        len(pickups),
-        lambda i: (
-            f"[{pickups[i].slot}] {pickups[i].starter_out.name} is "
-            f"{pickups[i].reason}, no healthy bench replacement available -> "
-            f"best free agent for the slot is {pickups[i].replacement.name} "
-            f"({pickups[i].replacement.position}, {pickups[i].replacement.proTeam})"
+        pickups,
+        lambda p: (
+            f"[{p.slot}] {p.starter_out.name} is "
+            f"{p.reason}, no healthy bench replacement available -> "
+            f"best free agent for the slot is {p.replacement.name} "
+            f"({p.replacement.position}, {p.replacement.proTeam})"
         ),
+        lambda p: [p.starter_out.name, p.replacement.name],
         "Confirm each starter is genuinely out/questionable and that the "
         "suggested free agent is the best realistic replacement for this slot "
         "right before kickoff. This is alert-only — no roster moves are "
@@ -134,17 +167,18 @@ def run_waivers(apply: bool) -> None:
         notify("waivers", summary)
         return
 
-    plan = review_candidates(
+    plan = _review_with_memory(
         "waiver pickups",
         week,
-        len(suggestions),
-        lambda i: (
-            f"Add {suggestions[i].add.name} ({suggestions[i].add.position}, "
-            f"{suggestions[i].add.proTeam}, injury={suggestions[i].add.injuryStatus}), "
-            f"drop {suggestions[i].drop.name} ({suggestions[i].drop.position}, "
-            f"{suggestions[i].drop.proTeam}) — heuristic projected upgrade: "
-            f"+{suggestions[i].projected_upgrade:.1f} pts"
+        suggestions,
+        lambda s: (
+            f"Add {s.add.name} ({s.add.position}, "
+            f"{s.add.proTeam}, injury={s.add.injuryStatus}), "
+            f"drop {s.drop.name} ({s.drop.position}, "
+            f"{s.drop.proTeam}) — heuristic projected upgrade: "
+            f"+{s.projected_upgrade:.1f} pts"
         ),
+        lambda s: [s.add.name, s.drop.name],
         "Decide whether each proposed add/drop is still worth making given "
         "the latest injury news, role/usage trends, and matchup for the add.",
     )
@@ -198,15 +232,16 @@ def run_trades() -> None:
         return
 
     roster_summary = _roster_summary(team)
-    plan = review_candidates(
+    plan = _review_with_memory(
         "trade targets",
         week,
-        len(targets),
-        lambda i: (
-            f"[{targets[i].position}] {targets[i].player.name} "
-            f"(benched on {targets[i].team_name}, "
-            f"{targets[i].player.total_points:.1f} pts this season)"
+        targets,
+        lambda t: (
+            f"[{t.position}] {t.player.name} "
+            f"(benched on {t.team_name}, "
+            f"{t.player.total_points:.1f} pts this season)"
         ),
+        lambda t: [t.player.name],
         "Decide whether each trade target is genuinely worth pursuing given "
         "current injury status, role, and rest-of-season outlook. For each one "
         "you approve, propose a specific, fair player to offer in return from "

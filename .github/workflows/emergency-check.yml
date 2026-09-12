@@ -31,4 +31,6 @@ jobs:
           SEASON_YEAR: ${{ secrets.SEASON_YEAR }}
           SLACK_WEBHOOK_URL_LINEUP: ${{ secrets.SLACK_WEBHOOK_URL_LINEUP }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
         run: python main.py emergency
